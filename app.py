@@ -1,12 +1,24 @@
 from flask import Flask, request, jsonify
+from sqlalchemy.exc import SQLAlchemyError
 from models.user import User
 from database import db
 from flask_login import LoginManager, login_user, current_user, logout_user, login_required
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 
+# sqlite
+#app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+
+# mysql
+username = 'root'
+password = 'masterkey'
+host = '127.0.0.1:3306'
+database = 'database_auth'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{username}:{password}@{host}/{database}'
+
+# Init app
 login_manager = LoginManager()
 db.init_app(app)
 login_manager.init_app(app)
@@ -52,7 +64,7 @@ def create_user():
     password = data.get("password")
 
     if username and password:
-        user = User(username=username, password=password)
+        user = User(username=username, password=password, role='user')
         db.session.add(user)
         db.session.commit()
 
@@ -78,19 +90,40 @@ def update_user(id_user):
     data = request.json
     user = User.query.get(id_user)
 
-    if user and data.get("password"):
+    if not user:
+        return jsonify({"message": "Usuário não encontrado"}), 404
+
+    if id_user != current_user.id and current_user.role == "user":
+        return jsonify({"message": "Operação não permitida"}), 403
+
+    updated = False
+
+    if data.get("password"):
         user.password = data.get("password")
-        db.session.commit()
+        updated = True
 
-        return jsonify({"message": f"Usuário {id_user} atualizado com sucesso"})
+    if data.get("role"):
+        user.role = data.get("role")
+        updated = True
 
-    return jsonify({"message": "Usuário não encontrado"}), 404
+    if updated:
+        try:
+            db.session.commit()
+            return jsonify({"message": f"Usuário {id_user} atualizado com sucesso"})
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            return jsonify({"message": "Erro ao atualizar usuário", "error": str(e)}), 500
+
+    return jsonify({"message": "Nenhuma atualização feita"}), 200
 
 
 @app.route('/user/<int:id_user>', methods=["DELETE"])
 @login_required
 def delete_user(id_user):
     user = User.query.get(id_user)
+
+    if current_user.role != "admin":
+        return jsonify({"message": "Operação não permitida"}), 403
 
     if id_user == current_user.id:
         return jsonify({"message": "Deleção não permitida"}), 403

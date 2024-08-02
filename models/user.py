@@ -3,7 +3,8 @@ from flask_login import UserMixin
 
 
 class User(db.Model, UserMixin):
-    # id (int), username (text), password (text)
+    # id (int), username (text), password (text), role (text)
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), nullable=False, unique=True)
     password = db.Column(db.String(80), nullable=False) # -> criptografar para não retornar a informação diretamente
+    role = db.Column(db.String(80), nullable=False, default='user')
